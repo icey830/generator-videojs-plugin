@@ -48,6 +48,7 @@ helpers.run(libs.GENERATOR_PATH)
 
     const commands = [
       ['git', 'init'],
+      ['npm', 'ci'],
       ['git', 'add', '--all'],
       ['git', 'commit', '-a', '-m', 'feat: initial release!'],
       ['npm', 'version', 'prerelease'],
@@ -80,6 +81,22 @@ helpers.run(libs.GENERATOR_PATH)
 
     assert.ok(prerelease.size === 0, 'changelog was not written to after prerelease');
     assert.ok(release.size > 0, 'changelog was written to after major');
+
+    // test to make sure husky and lint-staged work
+    console.log('Making sure husky/lint-staged works');
+    fs.writeFileSync(path.join(tempDir, 'src', 'plugin.js'), '\n\n\n\n\n\nexport default nothing;');
+
+    const retval = spawnSync('git', ['commit', '-a', '-m', 'test husky'], spawnOptions);
+
+    if (retval.status === 0) {
+      const output = retval.output
+        .filter((s) => !!s)
+        .map((s) => s.toString())
+        .join('');
+
+      console.error(output);
+      throw new Error('Husky should have errored on linting!');
+    }
 
     // test is a success
     return Promise.resolve();
