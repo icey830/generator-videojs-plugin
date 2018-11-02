@@ -27,7 +27,7 @@ helpers.run(libs.GENERATOR_PATH)
     precommit: true
   })
   .then(function() {
-    const spawnOptions = {cwd: tempDir};
+    const spawnOptions = {cwd: tempDir, env: Object.assign(process.env, {NPM_MERGE_DRIVER_IGNORE_CI: true})};
 
     const cleanup = function() {
       console.log(`Cleaning up ${tempDir}`);
@@ -42,6 +42,12 @@ helpers.run(libs.GENERATOR_PATH)
       }
     };
 
+    const pkg = JSON.parse(fs.readFileSync(path.join(tempDir, 'package.json')));
+
+    pkg.husky.skipCI = false;
+
+    fs.writeFileSync(path.join(tempDir, 'package.json'), JSON.stringify(pkg));
+
     process.on('SIGINT', cleanup);
     process.on('SIGQUIT', cleanup);
     process.on('exit', cleanup);
@@ -52,19 +58,36 @@ helpers.run(libs.GENERATOR_PATH)
       ['npm', 'ci'],
       ['git', 'add', '--all'],
       ['git', 'commit', '-a', '-m', 'feat: initial release!'],
+
       ['npm', 'version', 'prerelease'],
       // copy the changelog over to check its size
       ['shx', 'cp', 'CHANGELOG.md', 'CHANGELOG-prerelease.md'],
       ['npm', 'version', 'major'],
-      ['npm', 'publish', '--dry-run']
+      ['npm', 'publish', '--dry-run'],
+
+      // convoluted npm merge driver test
+      ['git', 'checkout', '-b', 'merge-driver-test'],
+      ['npm', 'i', '-D', 'is-ci'],
+      ['git', 'commit', '-a', '-m', 'add is-ci to dev deps'],
+      ['git', 'checkout', 'master'],
+      ['npm', 'i', 'is-ci'],
+      ['git', 'commit', '-a', '-m', 'add is-ci as dep'],
+      ['git', 'merge', '--no-edit', 'merge-driver-test']
     ];
 
     commands.forEach(function(args) {
       const cmd = args.shift();
       const command = `${path.basename(cmd)} ${args.join(' ')}`;
 
+      const options = Object.assign({}, spawnOptions);
+
+      // print out merge driver command
+      if (args[0] === 'merge') {
+        options.stdio = 'inherit';
+      }
+
       console.log(`Running '${command}'`);
-      const retval = spawnSync(cmd, args, spawnOptions);
+      const retval = spawnSync(cmd, args, options);
 
       if (retval.status !== 0) {
         const output = retval.output
@@ -83,16 +106,29 @@ helpers.run(libs.GENERATOR_PATH)
     assert.ok(prerelease.size === 0, 'changelog was not written to after prerelease');
     assert.ok(release.size > 0, 'changelog was written to after major');
 
+    console.log('Making sure npm-merge-driver-install works');
+
+    const mergeDriverRetval = spawnSync('git', ['ls-files', '-u'], spawnOptions);
+    const mergeDriverOutput = mergeDriverRetval.output
+      .filter((s) => !!s)
+      .map((s) => s.toString().trim())
+      .join('');
+
+    if (mergeDriverOutput) {
+      console.error(mergeDriverOutput);
+      throw new Error('npm-merge-driver should have merged conflicts!');
+    }
+
     // test to make sure husky and lint-staged work
-    console.log('Making sure husky/lint-staged works');
+    console.log('Making sure husky/lint-staged can fail');
     fs.writeFileSync(path.join(tempDir, 'src', 'plugin.js'), '\n\n\n\n\n\nexport default nothing;');
 
-    const retval = spawnSync('git', ['commit', '-a', '-m', 'test husky'], spawnOptions);
+    const huskyRetval = spawnSync('git', ['commit', '-a', '-m', 'test husky'], Object.assign({stdio: 'inherit'}, spawnOptions));
 
-    if (retval.status === 0) {
-      const output = retval.output
+    if (huskyRetval.status === 0) {
+      const output = huskyRetval.output
         .filter((s) => !!s)
-        .map((s) => s.toString())
+        .map((s) => s.toString().trim())
         .join('');
 
       console.error(output);
