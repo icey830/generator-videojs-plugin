@@ -15,7 +15,7 @@ helpers.run(libs.GENERATOR_PATH)
     tempDir = dir;
     console.log(`Generating Project in ${tempDir}`);
   })
-  .withOptions(Object.assign(libs.options(), {skipInstall: false}))
+  .withOptions(Object.assign(libs.options(), {skipInstall: true}))
   .withPrompts({
     name: 'integration-test',
     author: 'John Doe',
@@ -48,6 +48,7 @@ helpers.run(libs.GENERATOR_PATH)
 
     const commands = [
       ['git', 'init'],
+      ['npm', 'i', '--package-lock-only'],
       ['npm', 'ci'],
       ['git', 'add', '--all'],
       ['git', 'commit', '-a', '-m', 'feat: initial release!'],
